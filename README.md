@@ -2,6 +2,10 @@
 
 OmaPaint is a lightweight Paint-style drawing app built with Quickshell and QML, designed to fit naturally into an Omarchy desktop.
 
+## Preview
+
+![OmaPaint preview](screenshot.png)
+
 ## Run
 
 ```bash
