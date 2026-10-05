@@ -32,6 +32,7 @@ ApplicationWindow {
 
     property string tool: "pen"
     property string language: "auto"
+    property bool showLayers: false
     property color ink: "#1f2937"
     property int brushSize: 5
     property int shapeSides: 6
@@ -1096,6 +1097,13 @@ ApplicationWindow {
                 ToolTip.visible: hovered
                 ToolTip.text: root.tr("Język interfejsu", "Interface language")
             }
+            CheckBox {
+                text: root.tr("Warstwy", "Layers")
+                checked: root.showLayers
+                onToggled: root.showLayers = checked
+                ToolTip.visible: hovered
+                ToolTip.text: root.tr("Pokaż panel warstw", "Show layers panel")
+            }
             Button { text: root.tr("Zapisz PNG", "Save PNG"); highlighted: true; onClicked: saveDialog.open() }
         }
     }
@@ -1427,7 +1435,9 @@ ApplicationWindow {
         }
         Rectangle {
             id: layersPanel
-            Layout.preferredWidth: 210
+            visible: root.showLayers
+            Layout.preferredWidth: root.showLayers ? 210 : 0
+            Layout.minimumWidth: 0
             Layout.fillHeight: true
             radius: 12
             color: root.surfaceRaised

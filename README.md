@@ -20,6 +20,7 @@ You can also install `org.omarchy.OmaPaint.desktop` into `~/.local/share/applica
 - Text boxes with wrapping and resize handles
 - Movable and resizable image objects opened from PNG/JPEG/WebP files
 - Layers with visibility and opacity controls
+- Simple mode by default, with an optional Layers panel toggle for advanced workflows
 - Selection, move, resize, cut, copy and paste
 - Undo/redo history
 - PNG export
