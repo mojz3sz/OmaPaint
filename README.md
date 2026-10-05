@@ -19,8 +19,7 @@ You can also install `org.omarchy.OmaPaint.desktop` into `~/.local/share/applica
 - Pen, pencil, marker, eraser, bucket fill, shapes, star, polygon and text tools
 - Text boxes with wrapping and resize handles
 - Movable and resizable image objects opened from PNG/JPEG/WebP files
-- Layers with visibility and opacity controls
-- Simple mode by default, with an optional Layers panel toggle for advanced workflows
+- A simple single-canvas document model inspired by MS Paint
 - Selection, move, resize, cut, copy and paste
 - Undo/redo history
 - PNG export
