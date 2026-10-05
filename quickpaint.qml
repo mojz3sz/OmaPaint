@@ -64,6 +64,10 @@ ApplicationWindow {
     property var historyLabels: []
     property var redoLabels: []
     property string currentAction: "Gotowe"
+    property bool documentDirty: false
+    property bool pendingCloseAfterSave: false
+    property bool pendingNewAfterSave: false
+    property bool allowClose: false
     property color canvasBackground: "#ffffff"
     property string rasterBackground: ""
     property var pendingFill: null
@@ -73,6 +77,12 @@ ApplicationWindow {
     property int documentWidth: 1400
     property int documentHeight: 900
     property real zoom: 1.0
+    onClosing: function(close) {
+        if (documentDirty && !allowClose) {
+            close.accepted = false
+            unsavedChangesDialog.open()
+        }
+    }
     onZoomChanged: { topRuler.requestPaint(); leftRuler.requestPaint() }
     onDocumentWidthChanged: topRuler.requestPaint()
     onDocumentHeightChanged: leftRuler.requestPaint()
@@ -136,6 +146,7 @@ ApplicationWindow {
         historyLabels = historyLabels.concat([label || "Edycja"])
         redoLabels = []
         currentAction = label || "Edycja"
+        documentDirty = true
     }
 
     function selectTool(name) {
@@ -650,9 +661,36 @@ ApplicationWindow {
     function saveCanvas(url) {
         canvas.grabToImage(function(result) {
             var path = url.toString().replace(/^file:\/\//, "")
-            result.saveToFile(path)
+            if (!result.saveToFile(path)) {
+                statusText = root.tr("Nie można zapisać pliku", "Could not save file")
+                pendingCloseAfterSave = false
+                return
+            }
+            documentDirty = false
             statusText = "Zapisano " + path.split("/").pop()
+            if (pendingNewAfterSave) {
+                pendingNewAfterSave = false
+                Qt.callLater(function() { root.newCanvas() })
+            } else if (pendingCloseAfterSave) {
+                pendingCloseAfterSave = false
+                Qt.callLater(function() { root.close() })
+            }
         })
+    }
+
+    function discardAndClose() {
+        allowClose = true
+        unsavedChangesDialog.close()
+        root.close()
+    }
+
+    function requestNewCanvas() {
+        if (!documentDirty) {
+            newCanvas()
+            return
+        }
+        pendingNewAfterSave = true
+        unsavedChangesDialog.open()
     }
 
     function commitFilledCanvas() {
@@ -952,6 +990,57 @@ ApplicationWindow {
         nameFilters: ["Obraz PNG (*.png)"]
         currentFile: "my-drawing.png"
         onAccepted: root.saveCanvas(selectedFile)
+        onRejected: {
+            root.pendingCloseAfterSave = false
+            root.pendingNewAfterSave = false
+        }
+    }
+
+    Dialog {
+        id: unsavedChangesDialog
+        title: root.pendingNewAfterSave ? root.tr("Niezapisane zmiany", "Unsaved changes") : root.tr("Niezapisane zmiany", "Unsaved changes")
+        modal: true
+        standardButtons: Dialog.NoButton
+        contentItem: ColumnLayout {
+            implicitWidth: 360
+            spacing: 14
+            Label {
+                text: root.pendingNewAfterSave
+                    ? root.tr("Czy chcesz zapisać zmiany przed utworzeniem nowego płótna?",
+                              "Do you want to save your changes before creating a new canvas?")
+                    : root.tr("Czy chcesz zapisać zmiany przed wyjściem?",
+                              "Do you want to save your changes before exiting?")
+                color: root.text
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Button {
+                    text: root.tr("Zapisz", "Save")
+                    highlighted: true
+                    onClicked: {
+                        root.pendingCloseAfterSave = !root.pendingNewAfterSave
+                        unsavedChangesDialog.close()
+                        saveDialog.open()
+                    }
+                }
+                Button {
+                    text: root.tr("Wyjdź bez zapisywania", "Discard")
+                    onClicked: {
+                        if (root.pendingNewAfterSave) {
+                            root.pendingNewAfterSave = false
+                            unsavedChangesDialog.close()
+                            root.newCanvas()
+                        } else root.discardAndClose()
+                    }
+                }
+                Button {
+                    text: root.tr("Anuluj", "Cancel")
+                    onClicked: unsavedChangesDialog.close()
+                }
+            }
+        }
     }
 
     Dialog {
@@ -1068,7 +1157,7 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Shift+Z"; onActivated: root.redo() }
     Shortcut { sequence: "Ctrl+O"; onActivated: openDialog.open() }
     Shortcut { sequence: "Ctrl+S"; onActivated: saveDialog.open() }
-    Shortcut { sequence: "Ctrl+N"; onActivated: root.newCanvas() }
+    Shortcut { sequence: "Ctrl+N"; onActivated: root.requestNewCanvas() }
     Shortcut { sequence: "Ctrl+C"; onActivated: root.copySelection() }
     Shortcut { sequence: "Ctrl+X"; onActivated: root.cutSelection() }
     Shortcut { sequence: "Ctrl+V"; onActivated: root.pasteSelection() }
@@ -1082,6 +1171,7 @@ ApplicationWindow {
             spacing: 8
             Label { text: "OmaPaint"; color: root.accent; font.bold: true; font.pixelSize: 17; Layout.rightMargin: 4 }
             Label { text: root.tr("Edytor obrazów", "Image editor"); color: root.muted; font.pixelSize: 11; Layout.rightMargin: 12 }
+            ToolButton { text: root.tr("Nowy", "New"); onClicked: root.requestNewCanvas(); ToolTip.visible: hovered; ToolTip.text: root.tr("Utwórz nowe płótno", "Create a new canvas") }
             ToolButton { text: root.tr("Otwórz", "Open"); onClicked: openDialog.open(); ToolTip.visible: hovered; ToolTip.text: root.tr("Otwórz obraz", "Open image") }
             ToolButton { text: root.tr("Rozmiar", "Resize"); onClicked: resizeDialog.open(); ToolTip.visible: hovered; ToolTip.text: root.tr("Zmień rozmiar płótna", "Resize canvas") }
             ToolButton { text: "↶"; font.pixelSize: 21; enabled: root.undoStack.length > 0; onClicked: root.undo(); ToolTip.visible: hovered; ToolTip.text: root.tr("Cofnij", "Undo") }
