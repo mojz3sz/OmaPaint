@@ -1,0 +1,6 @@
+*.log
+*.qslog
+__pycache__/
+output/
+tmp/
+tries/

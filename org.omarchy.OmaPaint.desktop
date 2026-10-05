@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=OmaPaint
+Comment=A simple drawing app for Omarchy
+Exec=quickshell -p /home/mojz3sz/Work/quickpaint.qml
+Icon=applications-graphics
+Terminal=false
+Categories=Graphics;Utility;
+MimeType=image/png;image/jpeg;image/webp;
