@@ -1333,7 +1333,6 @@ ApplicationWindow {
                 }
             }
         }
-        }
         Rectangle {
             id: historyPanel
             Layout.preferredWidth: 210
@@ -1367,6 +1366,7 @@ ApplicationWindow {
                     }
                 }
             }
+        }
         }
         Rectangle {
             Layout.fillWidth: true
