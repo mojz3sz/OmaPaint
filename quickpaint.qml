@@ -32,6 +32,7 @@ ApplicationWindow {
 
     property string tool: "pen"
     property string language: "auto"
+    property bool showLayers: false
     property color ink: "#1f2937"
     property int brushSize: 5
     property int shapeSides: 6
@@ -56,6 +57,8 @@ ApplicationWindow {
     property var clipboardStrokes: []
     property int pasteCount: 0
     property var strokes: []
+    property var layers: [{ name: "Warstwa 1", visible: true, opacity: 1.0, strokes: [] }]
+    property int currentLayerIndex: 0
     property var undoStack: []
     property var redoStack: []
     property var historyLabels: []
@@ -99,15 +102,25 @@ ApplicationWindow {
         Component.onCompleted: running = true
     }
 
+    function syncCurrentLayer() {
+        var next = layers.slice()
+        var layer = next[currentLayerIndex]
+        next[currentLayerIndex] = { name: layer.name, visible: layer.visible, opacity: layer.opacity, strokes: strokes }
+        layers = next
+    }
+
     function snapshot() {
-        return JSON.stringify({ strokes: strokes,
+        syncCurrentLayer()
+        return JSON.stringify({ layers: layers, currentLayerIndex: currentLayerIndex,
                                 rasterBackground: rasterBackground,
                                 canvasBackground: String(canvasBackground) })
     }
 
     function restoreSnapshot(serialized) {
         var state = JSON.parse(serialized)
-        strokes = state.strokes || []
+        layers = state.layers
+        currentLayerIndex = Math.max(0, Math.min(layers.length - 1, state.currentLayerIndex))
+        strokes = layers[currentLayerIndex].strokes || []
         rasterBackground = state.rasterBackground || ""
         canvasBackground = state.canvasBackground || "#ffffff"
         rasterImage.source = rasterBackground
@@ -224,6 +237,7 @@ ApplicationWindow {
             next[i] = filled
             remember("Wypełnij kształt")
             strokes = next
+            syncCurrentLayer()
             statusText = "Wypełniono kształt kolorem " + String(ink)
             canvas.requestPaint()
             return true
@@ -242,6 +256,7 @@ ApplicationWindow {
         strokes = next
         currentPoints = []
         drawing = false
+        syncCurrentLayer()
         if (["line", "rectangle", "ellipse", "star", "polygon"].indexOf(tool) >= 0) {
             var addedIndex = strokes.length - 1
             selectedIndices = [addedIndex]
@@ -482,6 +497,7 @@ ApplicationWindow {
         if (!scalingSelection) return
         scalingSelection = false
         drawing = false
+        syncCurrentLayer()
         currentAction = "Zmień rozmiar zaznaczenia"
         statusText = currentAction
         canvas.requestPaint()
@@ -510,6 +526,7 @@ ApplicationWindow {
         if (!movingSelection) return
         movingSelection = false
         drawing = false
+        syncCurrentLayer()
         currentAction = "Przenieś zaznaczenie"
         statusText = currentAction
         canvas.requestPaint()
@@ -539,6 +556,7 @@ ApplicationWindow {
             if (!boundsOverlap(boundsForStroke(strokes[i]), selectionRect)) remaining.push(strokes[i])
         }
         strokes = remaining
+        syncCurrentLayer()
         statusText = "Wycięto zaznaczenie"
         canvas.requestPaint()
     }
@@ -575,6 +593,7 @@ ApplicationWindow {
             }
         }
         tool = "select"
+        syncCurrentLayer()
         statusText = "Wklejono zaznaczenie"
         canvas.requestPaint()
     }
@@ -607,14 +626,17 @@ ApplicationWindow {
 
     function clearCanvas() {
         if (strokes.length === 0) return
-        remember("Wyczyść płótno")
+        remember("Wyczyść warstwę")
         strokes = []
-        statusText = "Wyczyszczono płótno"
+        syncCurrentLayer()
+        statusText = "Wyczyszczono warstwę"
         canvas.requestPaint()
     }
 
     function newCanvas() {
-        if (strokes.length > 0) remember("Nowe płótno")
+        if (strokes.length > 0 || layers.length > 1) remember("Nowe płótno")
+        layers = [{ name: "Warstwa 1", visible: true, opacity: 1.0, strokes: [] }]
+        currentLayerIndex = 0
         strokes = []
         canvasBackground = "#ffffff"
         rasterBackground = ""
@@ -651,6 +673,8 @@ ApplicationWindow {
             rasterImage.cache = false
             rasterImage.source = ""
             rasterImage.source = root.rasterBackground
+            root.layers = [{ name: "Wypełnione płótno", visible: true, opacity: 1.0, strokes: [] }]
+            root.currentLayerIndex = 0
             root.strokes = []
             root.selectedIndices = []
             root.selectionRect = null
@@ -661,6 +685,8 @@ ApplicationWindow {
 
     function openCanvas(url) {
         openedImage.source = url
+        layers = [{ name: "Warstwa 1", visible: true, opacity: 1.0, strokes: [] }]
+        currentLayerIndex = 0
         strokes = []
         canvasBackground = "#ffffff"
         pendingImagePlacement = true
@@ -691,6 +717,7 @@ ApplicationWindow {
         strokes = [{ points: [{ x: x, y: y }, { x: x + width, y: y + height }],
                      tool: "image", source: openedImage.source.toString(),
                      originalWidth: imageWidth, originalHeight: imageHeight }]
+        syncCurrentLayer()
         selectionRect = { x: x, y: y, width: width, height: height }
         selectedIndices = [0]
         tool = "select"
@@ -705,18 +732,23 @@ ApplicationWindow {
         remember("Zmień rozmiar płótna")
         var sx = newWidth / documentWidth
         var sy = newHeight / documentHeight
-        var scaled = JSON.parse(JSON.stringify(strokes))
-        for (var i = 0; i < scaled.length; i++) {
-            var item = scaled[i]
-            for (var j = 0; j < item.points.length; j++) {
-                item.points[j].x *= sx
-                item.points[j].y *= sy
+        syncCurrentLayer()
+        var resizedLayers = []
+        for (var l = 0; l < layers.length; l++) {
+            var scaled = []
+            for (var i = 0; i < layers[l].strokes.length; i++) {
+                var oldStroke = layers[l].strokes[i]
+                var points = []
+                for (var j = 0; j < oldStroke.points.length; j++)
+                    points.push({ x: oldStroke.points[j].x * sx, y: oldStroke.points[j].y * sy })
+                scaled.push({ points: points, tool: oldStroke.tool, color: oldStroke.color,
+                              size: Math.max(1, oldStroke.size * ((sx + sy) / 2)) })
             }
-            if (item.size) item.size = Math.max(1, item.size * ((sx + sy) / 2))
-            if (item.boxWidth) item.boxWidth *= sx
-            if (item.boxHeight) item.boxHeight *= sy
+            resizedLayers.push({ name: layers[l].name, visible: layers[l].visible,
+                                 opacity: layers[l].opacity, strokes: scaled })
         }
-        strokes = scaled
+        layers = resizedLayers
+        strokes = layers[currentLayerIndex].strokes
         documentWidth = newWidth
         documentHeight = newHeight
         statusText = "Zmieniono rozmiar płótna na " + newWidth + " × " + newHeight
@@ -819,6 +851,7 @@ ApplicationWindow {
                     color: String(ink), size: Math.max(12, brushSize * 4),
                     boxWidth: Math.max(30, box.width), boxHeight: Math.max(20, box.height) })
         strokes = next
+        syncCurrentLayer()
         statusText = "Dodano tekst"
         textBoxRect = null
         selectedIndices = [strokes.length - 1]
@@ -841,6 +874,59 @@ ApplicationWindow {
         drawing = false
         currentPoints = []
         textDialog.open()
+        canvas.requestPaint()
+    }
+
+    function selectLayer(index) {
+        if (index < 0 || index >= layers.length || index === currentLayerIndex) return
+        syncCurrentLayer()
+        currentLayerIndex = index
+        strokes = layers[currentLayerIndex].strokes || []
+        statusText = "Wybrano: " + layers[currentLayerIndex].name
+        canvas.requestPaint()
+    }
+
+    function addLayer() {
+        remember("Dodaj warstwę")
+        syncCurrentLayer()
+        var next = layers.slice()
+        next.push({ name: "Warstwa " + (next.length + 1), visible: true, opacity: 1.0, strokes: [] })
+        layers = next
+        currentLayerIndex = layers.length - 1
+        strokes = []
+        statusText = "Dodano " + layers[currentLayerIndex].name
+        canvas.requestPaint()
+    }
+
+    function deleteLayer() {
+        if (layers.length === 1) {
+            clearCanvas()
+            return
+        }
+        remember("Usuń warstwę")
+        syncCurrentLayer()
+        var next = layers.slice()
+        next.splice(currentLayerIndex, 1)
+        layers = next
+        currentLayerIndex = Math.max(0, Math.min(currentLayerIndex, layers.length - 1))
+        strokes = layers[currentLayerIndex].strokes || []
+        statusText = "Usunięto warstwę"
+        canvas.requestPaint()
+    }
+
+    function toggleLayer(index) {
+        var next = layers.slice()
+        var layer = next[index]
+        next[index] = { name: layer.name, visible: !layer.visible, opacity: layer.opacity, strokes: layer.strokes }
+        layers = next
+        canvas.requestPaint()
+    }
+
+    function setLayerOpacity(value) {
+        var next = layers.slice()
+        var layer = next[currentLayerIndex]
+        next[currentLayerIndex] = { name: layer.name, visible: layer.visible, opacity: value, strokes: layer.strokes }
+        layers = next
         canvas.requestPaint()
     }
 
@@ -1011,6 +1097,13 @@ ApplicationWindow {
                 ToolTip.visible: hovered
                 ToolTip.text: root.tr("Język interfejsu", "Interface language")
             }
+            CheckBox {
+                text: root.tr("Warstwy", "Layers")
+                checked: root.showLayers
+                onToggled: root.showLayers = checked
+                ToolTip.visible: hovered
+                ToolTip.text: root.tr("Pokaż panel warstw", "Show layers panel")
+            }
             Button { text: root.tr("Zapisz PNG", "Save PNG"); highlighted: true; onClicked: saveDialog.open() }
         }
     }
@@ -1067,7 +1160,7 @@ ApplicationWindow {
                 Row {
                     spacing: 6
                     Repeater {
-                        model: ["#1f2937", "#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#ffffff"]
+                        model: ["#1f2937", "#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899"]
                         delegate: RoundButton {
                             required property string modelData
                             width: 23; height: 23; padding: 0
@@ -1104,14 +1197,11 @@ ApplicationWindow {
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.minimumWidth: 0
             spacing: 10
 
         Rectangle {
             id: canvasFrame
             Layout.fillWidth: true
-            Layout.minimumWidth: 0
-            Layout.preferredWidth: 1
             Layout.fillHeight: true
             radius: 12
             color: root.surface
@@ -1201,11 +1291,17 @@ ApplicationWindow {
                     ctx.fillRect(0, 0, width, height)
                     if (rasterImage.status === Image.Ready)
                         ctx.drawImage(rasterImage, 0, 0, width, height)
-                    ctx.save()
-                    for (var i = 0; i < root.strokes.length; i++) root.drawStroke(ctx, root.strokes[i])
-                    if (root.currentPoints.length > 0)
-                        root.drawStroke(ctx, { points: root.currentPoints, tool: root.tool, color: String(root.ink), size: root.brushSize })
-                    ctx.restore()
+                    for (var layerIndex = 0; layerIndex < root.layers.length; layerIndex++) {
+                        var layer = root.layers[layerIndex]
+                        if (!layer.visible) continue
+                        ctx.save()
+                        ctx.globalAlpha = layer.opacity
+                        var layerStrokes = layerIndex === root.currentLayerIndex ? root.strokes : layer.strokes
+                        for (var i = 0; i < layerStrokes.length; i++) root.drawStroke(ctx, layerStrokes[i])
+                        if (layerIndex === root.currentLayerIndex && root.currentPoints.length > 0)
+                            root.drawStroke(ctx, { points: root.currentPoints, tool: root.tool, color: String(root.ink), size: root.brushSize })
+                        ctx.restore()
+                    }
                     if (root.pendingFill) {
                         var fillRequest = root.pendingFill
                         root.pendingFill = null
@@ -1336,20 +1432,77 @@ ApplicationWindow {
                 }
             }
         }
+        }
         Rectangle {
-            id: historyPanel
-            Layout.minimumWidth: 210
-            Layout.preferredWidth: 210
-            Layout.maximumWidth: 210
+            id: layersPanel
+            visible: root.showLayers
+            Layout.preferredWidth: root.showLayers ? 210 : 0
+            Layout.minimumWidth: 0
             Layout.fillHeight: true
             radius: 12
             color: root.surfaceRaised
             border.color: root.muted
             border.width: 1
+
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 10
                 spacing: 8
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: root.tr("Warstwy", "Layers"); color: root.text; font.bold: true; Layout.fillWidth: true }
+                    ToolButton { text: "+"; onClicked: root.addLayer(); ToolTip.visible: hovered; ToolTip.text: root.tr("Dodaj warstwę", "Add layer") }
+                    ToolButton { text: "−"; enabled: root.layers.length > 1 || root.strokes.length > 0; onClicked: root.deleteLayer(); ToolTip.visible: hovered; ToolTip.text: root.tr("Usuń warstwę", "Delete layer") }
+                }
+                ListView {
+                    id: layersList
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 170
+                    clip: true
+                    spacing: 5
+                    model: root.layers
+                    delegate: Rectangle {
+                        required property int index
+                        required property var modelData
+                        width: layersList.width
+                        height: 42
+                        radius: 8
+                        color: index === root.currentLayerIndex ? root.accent : root.surfaceSoft
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 6
+                            anchors.rightMargin: 4
+                            spacing: 5
+                            ToolButton {
+                                text: modelData.visible ? "●" : "○"
+                                onClicked: root.toggleLayer(index)
+                                ToolTip.visible: hovered
+                                ToolTip.text: modelData.visible ? root.tr("Ukryj warstwę", "Hide layer") : root.tr("Pokaż warstwę", "Show layer")
+                            }
+                            Label {
+                                text: modelData.name
+                                color: index === root.currentLayerIndex ? "#111111" : root.text
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                            Label {
+                                text: String(modelData.strokes.length)
+                                color: index === root.currentLayerIndex ? "#333333" : root.muted
+                                font.pixelSize: 11
+                            }
+                        }
+                        TapHandler { onTapped: root.selectLayer(index) }
+                    }
+                }
+                Label { text: root.tr("Krycie", "Opacity"); color: root.muted; font.pixelSize: 12 }
+                Slider {
+                    Layout.fillWidth: true
+                    from: 0; to: 1; stepSize: 0.01
+                    value: root.layers[root.currentLayerIndex].opacity
+                    onMoved: root.setLayerOpacity(value)
+                }
+                Label { text: Math.round(root.layers[root.currentLayerIndex].opacity * 100) + "%"; color: root.text; Layout.alignment: Qt.AlignRight }
+                Rectangle { Layout.fillWidth: true; height: 1; color: root.muted; opacity: 0.35 }
                 RowLayout {
                     Layout.fillWidth: true
                     Label { text: root.tr("Historia", "History"); color: root.text; font.bold: true; Layout.fillWidth: true }
@@ -1358,10 +1511,10 @@ ApplicationWindow {
                 ListView {
                     id: historyList
                     Layout.fillWidth: true
-                    Layout.fillHeight: true
+                    Layout.preferredHeight: 150
                     clip: true
                     spacing: 2
-                    model: root.historyLabels.length > 0 ? root.historyLabels : [root.tr("Brak działań", "No actions yet")]
+                        model: root.historyLabels.length > 0 ? root.historyLabels : [root.tr("Brak działań", "No actions yet")]
                     delegate: Label {
                         text: (root.historyLabels.length > 0 ? (index + 1) + ". " : "") + modelData
                         color: root.historyLabels.length > 0 && index === root.historyLabels.length - 1 ? root.accent : root.muted
@@ -1392,5 +1545,4 @@ ApplicationWindow {
             }
         }
     }
-}
 }
