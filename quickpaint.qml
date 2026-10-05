@@ -1104,11 +1104,14 @@ ApplicationWindow {
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.minimumWidth: 0
             spacing: 10
 
         Rectangle {
             id: canvasFrame
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            Layout.preferredWidth: 1
             Layout.fillHeight: true
             radius: 12
             color: root.surface
@@ -1335,7 +1338,9 @@ ApplicationWindow {
         }
         Rectangle {
             id: historyPanel
+            Layout.minimumWidth: 210
             Layout.preferredWidth: 210
+            Layout.maximumWidth: 210
             Layout.fillHeight: true
             radius: 12
             color: root.surfaceRaised
