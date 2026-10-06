@@ -34,6 +34,7 @@ ApplicationWindow {
     property string language: "auto"
     property bool showLayers: false
     property color ink: "#1f2937"
+    property color textInk: "#000000"
     property int brushSize: 5
     property int shapeSides: 6
     property bool drawing: false
@@ -285,6 +286,17 @@ ApplicationWindow {
         ctx.lineCap = "round"
         ctx.lineJoin = "round"
         ctx.lineWidth = stroke.size * (stroke.tool === "marker" ? 1.7 : stroke.tool === "pencil" ? 0.65 : stroke.tool === "eraser" ? 2.5 : 1)
+        var rotation = Number(stroke.rotation || 0)
+        if (rotation !== 0) {
+            var rotationBounds = root.boundsForStroke(stroke)
+            if (rotationBounds) {
+                ctx.translate(rotationBounds.x + rotationBounds.width / 2,
+                              rotationBounds.y + rotationBounds.height / 2)
+                ctx.rotate(rotation)
+                ctx.translate(-(rotationBounds.x + rotationBounds.width / 2),
+                              -(rotationBounds.y + rotationBounds.height / 2))
+            }
+        }
         if (stroke.tool === "image") {
             var imageFirst = points[0]
             var imageLast = points[points.length - 1]
@@ -423,22 +435,25 @@ ApplicationWindow {
         selectionRect = { x: x, y: y,
                           width: Math.abs(selectionEnd.x - selectionStart.x),
                           height: Math.abs(selectionEnd.y - selectionStart.y) }
-        selectedIndices = []
+        var foundIndices = []
         for (var i = 0; i < strokes.length; i++) {
             // A marquee selects complete objects only. This prevents a large
             // background shape from being selected when a smaller text box
             // inside it is selected.
-            if (boundsContained(boundsForStroke(strokes[i]), selectionRect)) selectedIndices.push(i)
+            if (boundsContained(boundsForStroke(strokes[i]), selectionRect)) foundIndices.push(i)
         }
         // A tiny click selects only the topmost object under the pointer.
-        if (selectedIndices.length === 0 && selectionRect.width < 12 && selectionRect.height < 12) {
+        if (foundIndices.length === 0 && selectionRect.width < 12 && selectionRect.height < 12) {
             for (var top = strokes.length - 1; top >= 0; top--) {
                 if (boundsOverlap(boundsForStroke(strokes[top]), selectionRect)) {
-                    selectedIndices.push(top)
+                    foundIndices.push(top)
                     break
                 }
             }
         }
+        // Assign a new array so QML bindings (including rotation buttons)
+        // are notified when an existing object is selected.
+        selectedIndices = foundIndices
         drawing = false
         currentPoints = []
         statusText = "Zaznaczenie gotowe"
@@ -533,6 +548,35 @@ ApplicationWindow {
         canvas.requestPaint()
     }
 
+    function rotateSelection(degrees) {
+        var indices = selectedIndices.slice()
+        // Rebuild the selection when an older object was selected by marquee
+        // or when it predates the rotation property. Rotation must work from
+        // the current selection rectangle, not only from objects created in
+        // the current interaction.
+        if (indices.length === 0 && selectionRect) {
+            for (var candidate = 0; candidate < strokes.length; candidate++) {
+                var candidateBounds = boundsForStroke(strokes[candidate])
+                if (boundsContained(candidateBounds, selectionRect) ||
+                        boundsOverlap(candidateBounds, selectionRect))
+                    indices.push(candidate)
+            }
+            if (indices.length > 0) selectedIndices = indices
+        }
+        if (indices.length === 0) return
+        remember(degrees < 0 ? "Obróć w lewo" : "Obróć w prawo")
+        var rotated = JSON.parse(JSON.stringify(strokes))
+        for (var i = 0; i < indices.length; i++) {
+            var index = indices[i]
+            if (!rotated[index]) continue
+            rotated[index].rotation = (rotated[index].rotation || 0) + degrees * Math.PI / 180
+        }
+        strokes = rotated
+        syncCurrentLayer()
+        statusText = degrees < 0 ? "Obrócono w lewo" : "Obrócono w prawo"
+        canvas.requestPaint()
+    }
+
     function finishMove() {
         if (!movingSelection) return
         movingSelection = false
@@ -584,11 +628,14 @@ ApplicationWindow {
             for (var j = 0; j < source.points.length; j++)
                 points.push({ x: source.points[j].x + offset, y: source.points[j].y + offset })
             pasted.push({ points: points, tool: source.tool, text: source.text, color: source.color,
-                          size: source.size, sides: source.sides })
+                          size: source.size, sides: source.sides, fill: source.fill,
+                          boxWidth: source.boxWidth, boxHeight: source.boxHeight,
+                          rotation: source.rotation || 0 })
         }
         strokes = pasted
-        selectedIndices = []
-        for (var k = strokes.length - clipboardStrokes.length; k < strokes.length; k++) selectedIndices.push(k)
+        var pastedIndices = []
+        for (var k = strokes.length - clipboardStrokes.length; k < strokes.length; k++) pastedIndices.push(k)
+        selectedIndices = pastedIndices
         selectionRect = null
         for (var s = 0; s < selectedIndices.length; s++) {
             var b = boundsForStroke(strokes[selectedIndices[s]])
@@ -818,6 +865,17 @@ ApplicationWindow {
         // Shapes are kept as document objects, so fill them directly. This
         // makes the color persistent in history, PNG export, and redraws.
         if (fillShapeAt(x, y)) return
+        // A click outside every object means the user wants to recolor the
+        // canvas background. Keep the strokes as objects instead of sending
+        // the whole frame through the raster flood-fill path. This is
+        // especially important when a text object is already on the canvas.
+        if (topmostObjectAt(x, y) < 0) {
+            remember("Wypełnij tło")
+            canvasBackground = String(ink)
+            statusText = "Wypełniono tło kolorem " + String(ink)
+            canvas.requestPaint()
+            return
+        }
         remember("Wypełnij kolorem")
         pendingFill = { x: x, y: y, color: String(ink) }
         statusText = "Wypełnianie obszaru..."
@@ -885,9 +943,15 @@ ApplicationWindow {
         remember("Dodaj tekst")
         var next = strokes.slice()
         var box = textBoxRect || { x: x, y: y, width: 420, height: Math.max(80, brushSize * 8) }
+        var fontSize = Math.max(12, brushSize * 4)
+        var measuredWidth = Math.max(30, Math.ceil(value.length * fontSize * 0.58 + 12))
+        var boxWidth = Math.min(Math.max(30, root.documentWidth - box.x), measuredWidth)
+        var charactersPerLine = Math.max(1, Math.floor((boxWidth - 12) / (fontSize * 0.58)))
+        var lineCount = Math.max(1, Math.ceil(value.length / charactersPerLine))
+        var boxHeight = Math.ceil(lineCount * fontSize * 1.25 + 8)
         next.push({ points: [{ x: box.x, y: box.y }], tool: "text", text: value,
-                    color: String(ink), size: Math.max(12, brushSize * 4),
-                    boxWidth: Math.max(30, box.width), boxHeight: Math.max(20, box.height) })
+                    color: String(textInk), size: fontSize,
+                    boxWidth: boxWidth, boxHeight: boxHeight, rotation: 0 })
         strokes = next
         syncCurrentLayer()
         statusText = "Dodano tekst"
@@ -1001,6 +1065,8 @@ ApplicationWindow {
         title: root.pendingNewAfterSave ? root.tr("Niezapisane zmiany", "Unsaved changes") : root.tr("Niezapisane zmiany", "Unsaved changes")
         modal: true
         standardButtons: Dialog.NoButton
+        x: Math.round((root.width - width) / 2)
+        y: Math.round((root.height - height) / 2)
         contentItem: ColumnLayout {
             implicitWidth: 360
             spacing: 14
@@ -1048,6 +1114,8 @@ ApplicationWindow {
         title: root.tr("Zmień rozmiar płótna", "Resize canvas")
         modal: true
         standardButtons: Dialog.Ok | Dialog.Cancel
+        x: Math.round((root.width - width) / 2)
+        y: Math.round((root.height - height) / 2)
         onOpened: {
             widthField.text = String(root.documentWidth)
             heightField.text = String(root.documentHeight)
@@ -1075,6 +1143,8 @@ ApplicationWindow {
         title: root.tr("Własny kolor", "Custom color")
         modal: true
         standardButtons: Dialog.Ok | Dialog.Cancel
+        x: Math.round((root.width - width) / 2)
+        y: Math.round((root.height - height) / 2)
         onOpened: colorField.text = String(root.ink)
         onAccepted: {
             var value = colorField.text.trim()
@@ -1102,13 +1172,37 @@ ApplicationWindow {
         title: root.tr("Dodaj tekst", "Add text")
         modal: true
         standardButtons: Dialog.Ok | Dialog.Cancel
-        onOpened: textField.text = ""
-        onAccepted: root.addTextAt(textField.text, root.textPoint.x, root.textPoint.y)
+        x: Math.round((root.width - width) / 2)
+        y: Math.round((root.height - height) / 2)
+        onOpened: {
+            textField.text = ""
+            textColorField.text = String(root.textInk)
+        }
+        onAccepted: {
+            var value = textColorField.text.trim()
+            if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
+                root.textInk = value
+                root.addTextAt(textField.text, root.textPoint.x, root.textPoint.y)
+            } else {
+                root.statusText = root.tr("Użyj koloru czcionki w formacie #000000", "Use a font color like #000000")
+                textDialog.open()
+            }
+        }
         contentItem: ColumnLayout {
             implicitWidth: 300
             spacing: 10
             Label { text: root.tr("Wpisz tekst, który ma pojawić się na płótnie.", "Type the text to place on the canvas."); color: root.text }
             TextField { id: textField; Layout.fillWidth: true; placeholderText: "Hello OmaPaint"; selectByMouse: true }
+            Label { text: root.tr("Kolor czcionki", "Font color"); color: root.text }
+            RowLayout {
+                Layout.fillWidth: true
+                TextField { id: textColorField; Layout.fillWidth: true; placeholderText: "#000000"; selectByMouse: true }
+                Rectangle {
+                    width: 28; height: 28; radius: 6
+                    color: /^#[0-9A-Fa-f]{6}$/.test(textColorField.text) ? textColorField.text : root.surfaceSoft
+                    border.color: root.muted
+                }
+            }
         }
     }
 
@@ -1176,6 +1270,8 @@ ApplicationWindow {
             ToolButton { text: root.tr("Rozmiar", "Resize"); onClicked: resizeDialog.open(); ToolTip.visible: hovered; ToolTip.text: root.tr("Zmień rozmiar płótna", "Resize canvas") }
             ToolButton { text: "↶"; font.pixelSize: 21; enabled: root.undoStack.length > 0; onClicked: root.undo(); ToolTip.visible: hovered; ToolTip.text: root.tr("Cofnij", "Undo") }
             ToolButton { text: "↷"; font.pixelSize: 21; enabled: root.redoStack.length > 0; onClicked: root.redo(); ToolTip.visible: hovered; ToolTip.text: root.tr("Ponów", "Redo") }
+            ToolButton { text: "↺"; font.pixelSize: 20; enabled: root.selectedIndices.length > 0; onClicked: root.rotateSelection(-15); ToolTip.visible: hovered; ToolTip.text: root.tr("Obróć w lewo", "Rotate left") }
+            ToolButton { text: "↻"; font.pixelSize: 20; enabled: root.selectedIndices.length > 0; onClicked: root.rotateSelection(15); ToolTip.visible: hovered; ToolTip.text: root.tr("Obróć w prawo", "Rotate right") }
             Item { Layout.fillWidth: true }
             ComboBox {
                 id: languageSelector
