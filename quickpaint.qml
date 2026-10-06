@@ -1250,7 +1250,7 @@ ApplicationWindow {
                 Row {
                     spacing: 6
                     Repeater {
-                        model: ["#1f2937", "#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#ffffff"]
+                        model: ["#000000", "#ffffff", "#facc15", "#92400e", "#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899"]
                         delegate: RoundButton {
                             required property string modelData
                             width: 23; height: 23; padding: 0
