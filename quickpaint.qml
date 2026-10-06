@@ -55,6 +55,19 @@ ApplicationWindow {
     property var moveStart: null
     property var moveOriginalRect: null
     property var moveOriginalStrokes: []
+    property bool fragmentActive: false
+    property bool fragmentCapturing: false
+    property var fragmentRect: null
+    property var fragmentOriginalRect: null
+    property var fragmentStart: null
+    property var fragmentMoveOriginalRect: null
+    property bool movingFragment: false
+    property bool scalingFragment: false
+    property string fragmentScaleCorner: ""
+    property real fragmentRotation: 0
+    property var pendingFragmentRect: null
+    property int fragmentSerial: 0
+    property string pendingCommittedFragmentPath: ""
     property var clipboardStrokes: []
     property int pasteCount: 0
     property var strokes: []
@@ -139,6 +152,11 @@ ApplicationWindow {
         selectedIndices = []
         selectionRect = null
         movingSelection = false
+        fragmentActive = false
+        fragmentCapturing = false
+        fragmentRect = null
+        fragmentOriginalRect = null
+        fragmentImage.source = ""
     }
 
     function remember(label) {
@@ -151,6 +169,7 @@ ApplicationWindow {
     }
 
     function selectTool(name) {
+        if (fragmentActive && name !== "fragment") commitFragment()
         tool = name
         if (name !== "select") selectionRect = null
         if (name !== "select") selectedIndices = []
@@ -161,17 +180,19 @@ ApplicationWindow {
     function toolLabel(name) {
         var polish = { pen: "Pióro", pencil: "Ołówek", marker: "Marker", eraser: "Gumka",
             fill: "Wypełnienie", line: "Linia", rectangle: "Prostokąt", ellipse: "Elipsa",
-            triangle: "Trójkąt", star: "Gwiazda", polygon: "Wielokąt", select: "Zaznaczanie", text: "Tekst" }
+            triangle: "Trójkąt", star: "Gwiazda", polygon: "Wielokąt", select: "Zaznaczanie",
+            fragment: "Zaznacz fragment", text: "Tekst" }
         var english = { pen: "Pen", pencil: "Pencil", marker: "Marker", eraser: "Eraser",
             fill: "Fill", line: "Line", rectangle: "Rectangle", ellipse: "Ellipse",
-            triangle: "Triangle", star: "Star", polygon: "Polygon", select: "Select", text: "Text" }
+            triangle: "Triangle", star: "Star", polygon: "Polygon", select: "Select",
+            fragment: "Select fragment", text: "Text" }
         return currentLanguage() === "pl" ? (polish[name] || name) : (english[name] || name)
     }
 
     function toolIcon(name) {
         var icons = { pen: "✎", pencil: "✏", marker: "▰", eraser: "⌫", fill: "▧",
             line: "╱", rectangle: "□", ellipse: "○", triangle: "△", star: "☆", polygon: "⬡",
-            select: "⌗", text: "T" }
+            select: "⌗", fragment: "▣", text: "T" }
         return icons[name] || "•"
     }
 
@@ -303,6 +324,17 @@ ApplicationWindow {
             if (openedImage.status === Image.Ready)
                 ctx.drawImage(openedImage, imageFirst.x, imageFirst.y,
                               imageLast.x - imageFirst.x, imageLast.y - imageFirst.y)
+            ctx.restore()
+            return
+        }
+        if (stroke.tool === "fragment-image") {
+            var fragmentBounds = root.boundsForStroke(stroke)
+            if (fragmentImage.status === Image.Ready && fragmentBounds) {
+                ctx.drawImage(fragmentImage,
+                              stroke.sourceX, stroke.sourceY, stroke.sourceWidth, stroke.sourceHeight,
+                              fragmentBounds.x, fragmentBounds.y,
+                              fragmentBounds.width, fragmentBounds.height)
+            }
             ctx.restore()
             return
         }
@@ -457,6 +489,179 @@ ApplicationWindow {
         drawing = false
         currentPoints = []
         statusText = "Zaznaczenie gotowe"
+        canvas.requestPaint()
+    }
+
+    function beginFragmentCapture(rect) {
+        if (rect.width < 12 || rect.height < 12) return
+        remember("Zaznacz fragment")
+        pendingFragmentRect = rect
+        fragmentCapturing = true
+        fragmentActive = false
+        selectionRect = null
+        canvas.requestPaint()
+        fragmentCaptureTimer.start()
+    }
+
+    function finishFragmentDraw() {
+        if (!selectionStart || !selectionEnd) return
+        var rect = { x: Math.min(selectionStart.x, selectionEnd.x),
+                     y: Math.min(selectionStart.y, selectionEnd.y),
+                     width: Math.abs(selectionEnd.x - selectionStart.x),
+                     height: Math.abs(selectionEnd.y - selectionStart.y) }
+        selectionStart = null
+        selectionEnd = null
+        drawing = false
+        beginFragmentCapture(rect)
+    }
+
+    function captureFragment() {
+        if (!pendingFragmentRect) return
+        var rect = pendingFragmentRect
+        pendingFragmentRect = null
+        fragmentSerial += 1
+        var path = "/tmp/omapaint-fragment-" + fragmentSerial + ".png"
+        canvas.grabToImage(function(result) {
+            if (!result.saveToFile(path)) {
+                fragmentCapturing = false
+                statusText = "Nie można zaznaczyć fragmentu"
+                return
+            }
+            fragmentImage.cache = false
+            fragmentImage.source = ""
+            fragmentImage.source = "file://" + path
+            fragmentOriginalRect = rect
+            fragmentRect = { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+            fragmentRotation = 0
+            fragmentCapturing = false
+            fragmentActive = true
+            selectionRect = fragmentRect
+            statusText = "Fragment zaznaczony — możesz go przesuwać i obracać"
+            canvas.requestPaint()
+        })
+    }
+
+    function fragmentHandleAt(x, y) {
+        if (!fragmentRect) return ""
+        var radius = 12 / root.zoom
+        var corners = [
+            { name: "nw", x: fragmentRect.x, y: fragmentRect.y },
+            { name: "ne", x: fragmentRect.x + fragmentRect.width, y: fragmentRect.y },
+            { name: "sw", x: fragmentRect.x, y: fragmentRect.y + fragmentRect.height },
+            { name: "se", x: fragmentRect.x + fragmentRect.width, y: fragmentRect.y + fragmentRect.height }
+        ]
+        for (var i = 0; i < corners.length; i++)
+            if (Math.abs(x - corners[i].x) <= radius && Math.abs(y - corners[i].y) <= radius) return corners[i].name
+        return ""
+    }
+
+    function moveFragmentTo(x, y) {
+        if (!fragmentStart || !fragmentMoveOriginalRect) return
+        var dx = x - fragmentStart.x
+        var dy = y - fragmentStart.y
+        fragmentRect = { x: fragmentMoveOriginalRect.x + dx, y: fragmentMoveOriginalRect.y + dy,
+                         width: fragmentMoveOriginalRect.width, height: fragmentMoveOriginalRect.height }
+        selectionRect = fragmentRect
+        canvas.requestPaint()
+    }
+
+    function scaleFragmentTo(x, y) {
+        if (!fragmentOriginalRect) return
+        var old = fragmentOriginalRect
+        var next = { x: old.x, y: old.y, width: old.width, height: old.height }
+        if (fragmentScaleCorner.indexOf("w") >= 0) {
+            next.x = Math.min(x, old.x + old.width - 20)
+            next.width = old.x + old.width - next.x
+        } else next.width = Math.max(20, x - old.x)
+        if (fragmentScaleCorner.indexOf("n") >= 0) {
+            next.y = Math.min(y, old.y + old.height - 20)
+            next.height = old.y + old.height - next.y
+        } else next.height = Math.max(20, y - old.y)
+        fragmentRect = next
+        selectionRect = next
+        canvas.requestPaint()
+    }
+
+    function finishFragmentTransform() {
+        movingFragment = false
+        scalingFragment = false
+        drawing = false
+        statusText = "Zmieniono zaznaczony fragment"
+        canvas.requestPaint()
+    }
+
+    function rotateFragment(degrees) {
+        if (!fragmentActive) return
+        remember(degrees < 0 ? "Obróć fragment w lewo" : "Obróć fragment w prawo")
+        fragmentRotation += degrees * Math.PI / 180
+        statusText = degrees < 0 ? "Obrócono fragment w lewo" : "Obrócono fragment w prawo"
+        canvas.requestPaint()
+    }
+
+    function commitFragment() {
+        if (!fragmentActive) return
+        if (fragmentImage.status !== Image.Ready) {
+            statusText = "Fragment jest jeszcze przygotowywany"
+            return
+        }
+        var source = fragmentOriginalRect
+        var target = fragmentRect
+        var mask = { points: [{ x: source.x, y: source.y },
+                              { x: source.x + source.width, y: source.y + source.height }],
+                     tool: "rectangle", color: String(canvasBackground), fill: String(canvasBackground), size: 1 }
+        var image = { points: [{ x: target.x, y: target.y },
+                               { x: target.x + target.width, y: target.y + target.height }],
+                      tool: "fragment-image", color: "#000000", size: 1,
+                      source: fragmentImage.source.toString(), sourceX: source.x, sourceY: source.y,
+                      sourceWidth: source.width, sourceHeight: source.height,
+                      rotation: fragmentRotation }
+        var next = strokes.slice()
+        next.push(mask)
+        next.push(image)
+        strokes = next
+        syncCurrentLayer()
+        var imageIndex = strokes.length - 1
+        fragmentActive = false
+        fragmentCapturing = false
+        fragmentRect = null
+        fragmentOriginalRect = null
+        fragmentImage.source = image.source
+        fragmentRotation = 0
+        selectedIndices = [imageIndex]
+        selectionRect = boundsForStroke(strokes[imageIndex])
+        tool = "select"
+        statusText = "Zatwierdzono fragment"
+        canvas.requestPaint()
+    }
+
+    function captureCommittedFragment() {
+        if (!fragmentActive) return
+        fragmentSerial += 1
+        var path = "/tmp/omapaint-fragment-" + fragmentSerial + ".png"
+        canvas.grabToImage(function(result) {
+            if (!result.saveToFile(path)) return
+            pendingCommittedFragmentPath = "file://" + path
+            rasterImage.cache = false
+            rasterImage.source = ""
+            rasterImage.source = pendingCommittedFragmentPath
+            statusText = "Zapisywanie fragmentu..."
+            canvas.requestPaint()
+        })
+    }
+
+    function finishCommittedFragment() {
+        if (pendingCommittedFragmentPath === "") return
+        rasterBackground = pendingCommittedFragmentPath
+        pendingCommittedFragmentPath = ""
+        layers = [{ name: "Warstwa 1", visible: true, opacity: 1.0, strokes: [] }]
+        currentLayerIndex = 0
+        strokes = []
+        fragmentActive = false
+        fragmentRect = null
+        fragmentOriginalRect = null
+        fragmentImage.source = ""
+        fragmentRotation = 0
+        statusText = "Zatwierdzono fragment"
         canvas.requestPaint()
     }
 
@@ -1234,6 +1439,18 @@ ApplicationWindow {
         id: rasterImage
         visible: false
         asynchronous: true
+        onStatusChanged: {
+            if (status === Image.Ready) {
+                root.finishCommittedFragment()
+                canvas.requestPaint()
+            }
+        }
+    }
+
+    Image {
+        id: fragmentImage
+        visible: false
+        asynchronous: false
         onStatusChanged: if (status === Image.Ready) canvas.requestPaint()
     }
 
@@ -1245,6 +1462,20 @@ ApplicationWindow {
         interval: 100
         repeat: false
         onTriggered: root.commitFilledCanvas()
+    }
+
+    Timer {
+        id: fragmentCaptureTimer
+        interval: 100
+        repeat: false
+        onTriggered: root.captureFragment()
+    }
+
+    Timer {
+        id: fragmentCommitTimer
+        interval: 100
+        repeat: false
+        onTriggered: root.captureCommittedFragment()
     }
 
     Shortcut { sequence: "Ctrl+Z"; onActivated: root.undo() }
@@ -1270,8 +1501,9 @@ ApplicationWindow {
             ToolButton { text: root.tr("Rozmiar", "Resize"); onClicked: resizeDialog.open(); ToolTip.visible: hovered; ToolTip.text: root.tr("Zmień rozmiar płótna", "Resize canvas") }
             ToolButton { text: "↶"; font.pixelSize: 21; enabled: root.undoStack.length > 0; onClicked: root.undo(); ToolTip.visible: hovered; ToolTip.text: root.tr("Cofnij", "Undo") }
             ToolButton { text: "↷"; font.pixelSize: 21; enabled: root.redoStack.length > 0; onClicked: root.redo(); ToolTip.visible: hovered; ToolTip.text: root.tr("Ponów", "Redo") }
-            ToolButton { text: "↺"; font.pixelSize: 20; enabled: root.selectedIndices.length > 0; onClicked: root.rotateSelection(-15); ToolTip.visible: hovered; ToolTip.text: root.tr("Obróć w lewo", "Rotate left") }
-            ToolButton { text: "↻"; font.pixelSize: 20; enabled: root.selectedIndices.length > 0; onClicked: root.rotateSelection(15); ToolTip.visible: hovered; ToolTip.text: root.tr("Obróć w prawo", "Rotate right") }
+            ToolButton { text: "↺"; font.pixelSize: 20; enabled: root.selectedIndices.length > 0 || root.fragmentActive; onClicked: root.fragmentActive ? root.rotateFragment(-15) : root.rotateSelection(-15); ToolTip.visible: hovered; ToolTip.text: root.tr("Obróć w lewo", "Rotate left") }
+            ToolButton { text: "↻"; font.pixelSize: 20; enabled: root.selectedIndices.length > 0 || root.fragmentActive; onClicked: root.fragmentActive ? root.rotateFragment(15) : root.rotateSelection(15); ToolTip.visible: hovered; ToolTip.text: root.tr("Obróć w prawo", "Rotate right") }
+            ToolButton { text: root.tr("Zatwierdź fragment", "Commit fragment"); visible: root.fragmentActive; onClicked: root.commitFragment() }
             Item { Layout.fillWidth: true }
             ComboBox {
                 id: languageSelector
@@ -1324,7 +1556,7 @@ ApplicationWindow {
                 Row {
                     spacing: 3
                     Repeater {
-                        model: ["pen", "pencil", "marker", "eraser", "fill", "line", "rectangle", "ellipse", "triangle", "star", "polygon", "select", "text"]
+                        model: ["pen", "pencil", "marker", "eraser", "fill", "line", "rectangle", "ellipse", "triangle", "star", "polygon", "select", "fragment", "text"]
                         delegate: Button {
                             required property string modelData
                             text: root.toolIcon(modelData)
@@ -1488,6 +1720,25 @@ ApplicationWindow {
                             root.drawStroke(ctx, { points: root.currentPoints, tool: root.tool, color: String(root.ink), size: root.brushSize })
                         ctx.restore()
                     }
+                    if (root.fragmentActive && root.fragmentRect && root.fragmentOriginalRect &&
+                            root.fragmentImage.status === Image.Ready) {
+                        var fragmentSource = root.fragmentOriginalRect
+                        var fragmentTarget = root.fragmentRect
+                        ctx.save()
+                        ctx.fillStyle = String(root.canvasBackground)
+                        ctx.fillRect(fragmentSource.x, fragmentSource.y,
+                                     fragmentSource.width, fragmentSource.height)
+                        var fragmentCenterX = fragmentTarget.x + fragmentTarget.width / 2
+                        var fragmentCenterY = fragmentTarget.y + fragmentTarget.height / 2
+                        ctx.translate(fragmentCenterX, fragmentCenterY)
+                        ctx.rotate(root.fragmentRotation)
+                        ctx.drawImage(root.fragmentImage,
+                                      fragmentSource.x, fragmentSource.y,
+                                      fragmentSource.width, fragmentSource.height,
+                                      -fragmentTarget.width / 2, -fragmentTarget.height / 2,
+                                      fragmentTarget.width, fragmentTarget.height)
+                        ctx.restore()
+                    }
                     if (root.pendingFill) {
                         var fillRequest = root.pendingFill
                         root.pendingFill = null
@@ -1536,6 +1787,40 @@ ApplicationWindow {
                     onPressed: {
                         if (root.tool === "fill") {
                             root.addFillAt(mouse.x, mouse.y)
+                            return
+                        }
+                        if (root.tool === "fragment") {
+                            if (root.fragmentActive) {
+                                var fragmentCorner = root.fragmentHandleAt(mouse.x, mouse.y)
+                                if (fragmentCorner) {
+                                    root.remember("Zmień rozmiar fragmentu")
+                                    root.scalingFragment = true
+                                    root.fragmentScaleCorner = fragmentCorner
+                                    root.fragmentOriginalRect = {
+                                        x: root.fragmentRect.x, y: root.fragmentRect.y,
+                                        width: root.fragmentRect.width, height: root.fragmentRect.height
+                                    }
+                                    root.drawing = true
+                                    return
+                                }
+                                if (root.pointInSelection(mouse.x, mouse.y)) {
+                                    root.remember("Przenieś fragment")
+                                    root.movingFragment = true
+                                    root.fragmentStart = { x: mouse.x, y: mouse.y }
+                                    root.fragmentMoveOriginalRect = {
+                                        x: root.fragmentRect.x, y: root.fragmentRect.y,
+                                        width: root.fragmentRect.width, height: root.fragmentRect.height
+                                    }
+                                    root.drawing = true
+                                    return
+                                }
+                                root.commitFragment()
+                                return
+                            }
+                            root.selectionStart = { x: mouse.x, y: mouse.y }
+                            root.selectionEnd = root.selectionStart
+                            root.selectionRect = { x: mouse.x, y: mouse.y, width: 1, height: 1 }
+                            root.drawing = true
                             return
                         }
                         if (root.tool === "select") {
@@ -1590,7 +1875,18 @@ ApplicationWindow {
                         root.addPoint(mouse.x, mouse.y)
                     }
                     onPositionChanged: {
-                        if (pressed && root.drawing && root.scalingSelection) {
+                        if (pressed && root.drawing && root.scalingFragment) {
+                            root.scaleFragmentTo(mouse.x, mouse.y)
+                        } else if (pressed && root.drawing && root.movingFragment) {
+                            root.moveFragmentTo(mouse.x, mouse.y)
+                        } else if (pressed && root.drawing && root.tool === "fragment") {
+                            root.selectionEnd = { x: mouse.x, y: mouse.y }
+                            root.selectionRect = { x: Math.min(root.selectionStart.x, mouse.x),
+                                                   y: Math.min(root.selectionStart.y, mouse.y),
+                                                   width: Math.abs(mouse.x - root.selectionStart.x),
+                                                   height: Math.abs(mouse.y - root.selectionStart.y) }
+                            canvas.requestPaint()
+                        } else if (pressed && root.drawing && root.scalingSelection) {
                             root.scaleSelectedTo(mouse.x, mouse.y)
                         } else if (pressed && root.drawing && root.movingSelection) {
                             root.moveSelectedTo(mouse.x, mouse.y)
@@ -1613,8 +1909,8 @@ ApplicationWindow {
                         root.zoomAt(point.x, point.y, wheel.angleDelta.y)
                         wheel.accepted = true
                     }
-                    onReleased: root.scalingSelection ? root.finishScale() : (root.movingSelection ? root.finishMove() : (root.tool === "select" ? root.finishSelection() : (root.tool === "text" ? root.finishTextBox() : root.finishStroke())))
-                    onCanceled: root.scalingSelection ? root.finishScale() : (root.movingSelection ? root.finishMove() : (root.tool === "select" ? root.finishSelection() : (root.tool === "text" ? root.finishTextBox() : root.finishStroke())))
+                    onReleased: root.scalingFragment || root.movingFragment ? root.finishFragmentTransform() : (root.scalingSelection ? root.finishScale() : (root.movingSelection ? root.finishMove() : (root.tool === "fragment" ? root.finishFragmentDraw() : (root.tool === "select" ? root.finishSelection() : (root.tool === "text" ? root.finishTextBox() : root.finishStroke())))))
+                    onCanceled: root.scalingFragment || root.movingFragment ? root.finishFragmentTransform() : (root.scalingSelection ? root.finishScale() : (root.movingSelection ? root.finishMove() : (root.tool === "fragment" ? root.finishFragmentDraw() : (root.tool === "select" ? root.finishSelection() : (root.tool === "text" ? root.finishTextBox() : root.finishStroke())))))
                 }
             }
         }
