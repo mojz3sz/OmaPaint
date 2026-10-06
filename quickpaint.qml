@@ -160,23 +160,23 @@ ApplicationWindow {
     function toolLabel(name) {
         var polish = { pen: "Pióro", pencil: "Ołówek", marker: "Marker", eraser: "Gumka",
             fill: "Wypełnienie", line: "Linia", rectangle: "Prostokąt", ellipse: "Elipsa",
-            star: "Gwiazda", polygon: "Wielokąt", select: "Zaznaczanie", text: "Tekst" }
+            triangle: "Trójkąt", star: "Gwiazda", polygon: "Wielokąt", select: "Zaznaczanie", text: "Tekst" }
         var english = { pen: "Pen", pencil: "Pencil", marker: "Marker", eraser: "Eraser",
             fill: "Fill", line: "Line", rectangle: "Rectangle", ellipse: "Ellipse",
-            star: "Star", polygon: "Polygon", select: "Select", text: "Text" }
+            triangle: "Triangle", star: "Star", polygon: "Polygon", select: "Select", text: "Text" }
         return currentLanguage() === "pl" ? (polish[name] || name) : (english[name] || name)
     }
 
     function toolIcon(name) {
         var icons = { pen: "✎", pencil: "✏", marker: "▰", eraser: "⌫", fill: "▧",
-            line: "╱", rectangle: "□", ellipse: "○", star: "☆", polygon: "⬡",
+            line: "╱", rectangle: "□", ellipse: "○", triangle: "△", star: "☆", polygon: "⬡",
             select: "⌗", text: "T" }
         return icons[name] || "•"
     }
 
     function addPoint(x, y) {
         var points = currentPoints.slice()
-        if (["line", "rectangle", "ellipse", "star", "polygon"].indexOf(tool) >= 0 && points.length > 0)
+        if (["line", "rectangle", "ellipse", "triangle", "star", "polygon"].indexOf(tool) >= 0 && points.length > 0)
             points = [points[0], { x: x, y: y }]
         else
             points.push({ x: x, y: y })
@@ -189,7 +189,7 @@ ApplicationWindow {
         if (points.length < 2) return []
         var first = points[0]
         var last = points[points.length - 1]
-        var sides = stroke.tool === "star" ? 5 : Math.max(3, stroke.sides || root.shapeSides)
+        var sides = stroke.tool === "triangle" ? 3 : (stroke.tool === "star" ? 5 : Math.max(3, stroke.sides || root.shapeSides))
         var vertices = stroke.tool === "star" ? sides * 2 : sides
         var cx = (first.x + last.x) / 2
         var cy = (first.y + last.y) / 2
@@ -231,7 +231,7 @@ ApplicationWindow {
             var dy = y - (first.y + last.y) / 2
             return (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1
         }
-        if (stroke.tool === "star" || stroke.tool === "polygon")
+        if (stroke.tool === "triangle" || stroke.tool === "star" || stroke.tool === "polygon")
             return pointInPolygon({ x: x, y: y }, shapeVertices(stroke))
         if (stroke.tool === "freehand" && points.length >= 3)
             return pointInPolygon({ x: x, y: y }, points)
@@ -268,7 +268,7 @@ ApplicationWindow {
         currentPoints = []
         drawing = false
         syncCurrentLayer()
-        if (["line", "rectangle", "ellipse", "star", "polygon"].indexOf(tool) >= 0) {
+        if (["line", "rectangle", "ellipse", "triangle", "star", "polygon"].indexOf(tool) >= 0) {
             var addedIndex = strokes.length - 1
             selectedIndices = [addedIndex]
             selectionRect = boundsForStroke(strokes[addedIndex])
@@ -360,8 +360,8 @@ ApplicationWindow {
                 ctx.fill()
             }
             ctx.stroke()
-        } else if (stroke.tool === "star" || stroke.tool === "polygon") {
-            var sides = stroke.tool === "star" ? 5 : Math.max(3, stroke.sides || root.shapeSides)
+        } else if (stroke.tool === "triangle" || stroke.tool === "star" || stroke.tool === "polygon") {
+            var sides = stroke.tool === "triangle" ? 3 : (stroke.tool === "star" ? 5 : Math.max(3, stroke.sides || root.shapeSides))
             var cx = (first.x + last.x) / 2
             var cy = (first.y + last.y) / 2
             var radiusX = Math.abs(last.x - first.x) / 2
@@ -1228,7 +1228,7 @@ ApplicationWindow {
                 Row {
                     spacing: 3
                     Repeater {
-                        model: ["pen", "pencil", "marker", "eraser", "fill", "line", "rectangle", "ellipse", "star", "polygon", "select", "text"]
+                        model: ["pen", "pencil", "marker", "eraser", "fill", "line", "rectangle", "ellipse", "triangle", "star", "polygon", "select", "text"]
                         delegate: Button {
                             required property string modelData
                             text: root.toolIcon(modelData)
