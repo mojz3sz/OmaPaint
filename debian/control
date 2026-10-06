@@ -1,0 +1,16 @@
+Source: omapaint
+Section: graphics
+Priority: optional
+Maintainer: mojz3sz <mojz3sz@users.noreply.github.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://github.com/mojz3sz/OmaPaint
+Rules-Requires-Root: no
+
+Package: omapaint
+Architecture: all
+Depends: ${misc:Depends}, quickshell
+Description: lightweight QML drawing application for Omarchy
+ OmaPaint is a small Paint-style drawing application built with Quickshell
+ and QML. It supports drawing tools, shapes, text, layers, selections,
+ undo/redo, image import and PNG export.

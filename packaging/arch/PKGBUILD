@@ -1,0 +1,27 @@
+pkgname=omapaint
+pkgver=0.5.1
+pkgrel=1
+pkgdesc='Lightweight QML drawing application for Omarchy'
+arch=('any')
+url='https://github.com/mojz3sz/OmaPaint'
+license=('MIT')
+depends=('quickshell')
+source=("https://github.com/mojz3sz/OmaPaint/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+    local appdir="${srcdir}/OmaPaint-${pkgver}"
+
+    install -Dm755 "${appdir}/run-omapaint.sh" \
+        "${pkgdir}/usr/share/omapaint/run-omapaint.sh"
+    install -Dm644 "${appdir}/quickpaint.qml" \
+        "${pkgdir}/usr/share/omapaint/quickpaint.qml"
+    install -Dm644 "${appdir}/org.omarchy.OmaPaint.desktop" \
+        "${pkgdir}/usr/share/applications/org.omarchy.OmaPaint.desktop"
+    install -Dm644 "${appdir}/LICENSE" \
+        "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+    install -Dm644 "${appdir}/README.md" \
+        "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+    install -d "${pkgdir}/usr/bin"
+    ln -s /usr/share/omapaint/run-omapaint.sh "${pkgdir}/usr/bin/omapaint"
+}

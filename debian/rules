@@ -1,0 +1,17 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+
+override_dh_auto_build:
+
+override_dh_auto_install:
+	install -Dm755 run-omapaint.sh debian/omapaint/usr/share/omapaint/run-omapaint.sh
+	install -Dm644 quickpaint.qml debian/omapaint/usr/share/omapaint/quickpaint.qml
+	install -Dm644 README.md debian/omapaint/usr/share/doc/omapaint/README.md
+	install -Dm644 LICENSE debian/omapaint/usr/share/doc/omapaint/copyright
+	install -Dm644 org.omarchy.OmaPaint.desktop debian/omapaint/usr/share/applications/org.omarchy.OmaPaint.desktop
+	install -d debian/omapaint/usr/bin
+	ln -s /usr/share/omapaint/run-omapaint.sh debian/omapaint/usr/bin/omapaint

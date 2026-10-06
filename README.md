@@ -33,6 +33,15 @@ You can also install `org.omarchy.OmaPaint.desktop` into `~/.local/share/applica
 - Linux with Quickshell and QtQuick Controls
 - An Omarchy desktop is recommended, but the app only requires a working Quickshell installation
 
+## Packages
+
+Packaging files for version `0.5.1` are included in `packaging/`:
+
+- Debian/Ubuntu: build from the repository root with `dpkg-buildpackage -us -uc`
+- Arch/Omarchy: build with `makepkg -si packaging/arch/PKGBUILD`
+
+Both packages require Quickshell to be installed on the target system.
+
 ## License
 
 This project is currently shared as-is. Add a license before redistributing it as a packaged application.
