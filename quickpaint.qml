@@ -285,7 +285,9 @@ ApplicationWindow {
             addPoint(dot.x + 0.1, dot.y + 0.1)
         }
         var next = strokes.slice()
-        next.push({ points: currentPoints, tool: tool, color: String(ink), size: brushSize, sides: shapeSides })
+        var closedShape = ["rectangle", "ellipse", "triangle", "star", "polygon"].indexOf(tool) >= 0
+        next.push({ points: currentPoints, tool: tool, color: String(ink), size: brushSize,
+                    sides: shapeSides, fill: closedShape ? "#ffffff" : "" })
         strokes = next
         currentPoints = []
         drawing = false
@@ -384,10 +386,8 @@ ApplicationWindow {
             var rectY = Math.min(first.y, last.y)
             var rectW = Math.abs(last.x - first.x)
             var rectH = Math.abs(last.y - first.y)
-            if (stroke.fill) {
-                ctx.fillStyle = stroke.fill
-                ctx.fillRect(rectX, rectY, rectW, rectH)
-            }
+            ctx.fillStyle = stroke.fill || "#ffffff"
+            ctx.fillRect(rectX, rectY, rectW, rectH)
             ctx.strokeRect(rectX, rectY, rectW, rectH)
         } else if (stroke.tool === "ellipse") {
             var centerX = (first.x + last.x) / 2
@@ -399,10 +399,8 @@ ApplicationWindow {
             ctx.scale(radiusX, radiusY)
             ctx.arc(0, 0, 1, 0, Math.PI * 2)
             ctx.restore()
-            if (stroke.fill) {
-                ctx.fillStyle = stroke.fill
-                ctx.fill()
-            }
+            ctx.fillStyle = stroke.fill || "#ffffff"
+            ctx.fill()
             ctx.stroke()
         } else if (stroke.tool === "triangle" || stroke.tool === "star" || stroke.tool === "polygon") {
             var sides = stroke.tool === "triangle" ? 3 : (stroke.tool === "star" ? 5 : Math.max(3, stroke.sides || root.shapeSides))
@@ -418,10 +416,8 @@ ApplicationWindow {
                 ctx.lineTo(cx + Math.cos(angle) * radiusX * radius,
                            cy + Math.sin(angle) * radiusY * radius)
             }
-            if (stroke.fill) {
-                ctx.fillStyle = stroke.fill
-                ctx.fill()
-            }
+            ctx.fillStyle = stroke.fill || "#ffffff"
+            ctx.fill()
             ctx.stroke()
         } else {
             ctx.moveTo(points[0].x, points[0].y)
