@@ -29,3 +29,4 @@ You can also launch `org.omarchy.OmaPaint.desktop` from a desktop menu after cop
 - Zoom with the slider or mouse wheel, centered on the pointer
 - Omarchy theme-aware colors, loaded from the active theme
 - Default colors on systems without Omarchy
+- Standalone Qt 6 runtime with no Quickshell dependency

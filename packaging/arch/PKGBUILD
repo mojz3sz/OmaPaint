@@ -1,5 +1,5 @@
 pkgname=omapaint
-pkgver=0.5.1
+pkgver=0.6.0
 pkgrel=1
 pkgdesc='Lightweight Qt 6 drawing application for Omarchy'
 arch=('x86_64' 'aarch64')

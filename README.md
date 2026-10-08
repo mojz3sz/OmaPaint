@@ -43,7 +43,7 @@ Packaging definitions are included in `packaging/` and `debian/`:
 - Debian/Ubuntu: build from the repository root with `dpkg-buildpackage -us -uc`
 - Arch/Omarchy: build with `makepkg -si packaging/arch/PKGBUILD`
 
-The standalone Qt 6 application does not require Quickshell. Package definitions retain the current `0.5.1` metadata until the planned `0.6.0` release is prepared.
+The `0.6.0` release is a standalone Qt 6 application and does not require Quickshell. Its Debian and Arch package definitions point to the `0.6.0` release metadata.
 
 ## License
 
