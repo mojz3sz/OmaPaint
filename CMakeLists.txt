@@ -8,13 +8,16 @@ set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 QuickDialogs2)
 
-qt_policy(SET QTP0001 NEW)
+if (COMMAND qt_policy)
+    qt_policy(SET QTP0001 NEW)
+endif()
 
 qt_add_executable(omapaint main.cpp)
 
 qt_add_qml_module(omapaint
     URI OmaPaint
     VERSION 1.0
+    RESOURCE_PREFIX /qt/qml
     QML_FILES
         quickpaint.qml
 )
