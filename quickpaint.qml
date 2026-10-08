@@ -292,12 +292,6 @@ ApplicationWindow {
         currentPoints = []
         drawing = false
         syncCurrentLayer()
-        if (["line", "rectangle", "ellipse", "triangle", "star", "polygon"].indexOf(tool) >= 0) {
-            var addedIndex = strokes.length - 1
-            selectedIndices = [addedIndex]
-            selectionRect = boundsForStroke(strokes[addedIndex])
-            tool = "select"
-        }
         statusText = "Liczba elementów: " + strokes.length
         canvas.requestPaint()
     }
@@ -814,6 +808,22 @@ ApplicationWindow {
         strokes = remaining
         syncCurrentLayer()
         statusText = "Wycięto zaznaczenie"
+        canvas.requestPaint()
+    }
+
+    function deleteSelection() {
+        if (selectedIndices.length === 0) return
+        remember("Usuń zaznaczenie")
+        var selected = {}
+        for (var i = 0; i < selectedIndices.length; i++) selected[selectedIndices[i]] = true
+        var remaining = []
+        for (var j = 0; j < strokes.length; j++)
+            if (!selected[j]) remaining.push(strokes[j])
+        strokes = remaining
+        selectedIndices = []
+        selectionRect = null
+        syncCurrentLayer()
+        statusText = "Usunięto zaznaczenie"
         canvas.requestPaint()
     }
 
@@ -1482,6 +1492,7 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+C"; onActivated: root.copySelection() }
     Shortcut { sequence: "Ctrl+X"; onActivated: root.cutSelection() }
     Shortcut { sequence: "Ctrl+V"; onActivated: root.pasteSelection() }
+    Shortcut { sequence: "Delete"; enabled: root.tool === "select" && root.selectedIndices.length > 0; onActivated: root.deleteSelection() }
 
         header: ToolBar {
         background: Rectangle { color: root.surface; opacity: 0.98 }
