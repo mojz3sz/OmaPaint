@@ -1,0 +1,59 @@
+name: Build Debian package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential \
+            cmake \
+            debhelper \
+            dpkg-dev \
+            fakeroot \
+            qt6-base-dev \
+            qt6-declarative-dev \
+            qml6-module-qtquick-controls \
+            qml6-module-qtquick-dialogs \
+            qml6-module-qtquick-layouts \
+            qml6-module-qtquick-window
+
+      - name: Build Debian package
+        run: dpkg-buildpackage -us -uc -b
+
+      - name: Verify package and metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t packages < <(find .. -maxdepth 1 -type f -name 'omapaint_*.deb' -print | sort)
+          test "${#packages[@]}" -eq 1
+          package="${packages[0]}"
+
+          dpkg-deb --info "$package"
+          dpkg-deb --contents "$package" >/dev/null
+
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          cp "$package" "$GITHUB_WORKSPACE/artifacts/"
+
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v4
+        with:
+          name: omapaint-deb
+          path: artifacts/*.deb
+          if-no-files-found: error
