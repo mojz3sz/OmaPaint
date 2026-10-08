@@ -1,6 +1,6 @@
 # OmaPaint
 
-OmaPaint is a lightweight Paint-style drawing app built with Quickshell and QML, designed to fit naturally into an Omarchy desktop.
+OmaPaint is a lightweight Paint-style drawing app built with Qt 6 and Qt Quick, designed to fit naturally into an Omarchy desktop while remaining usable on other Linux distributions.
 
 ## Preview
 
@@ -9,6 +9,8 @@ OmaPaint is a lightweight Paint-style drawing app built with Quickshell and QML,
 ## Run
 
 ```bash
+cmake -S . -B build
+cmake --build build
 ./run-omapaint.sh
 ```
 
@@ -30,17 +32,18 @@ You can also install `org.omarchy.OmaPaint.desktop` into `~/.local/share/applica
 
 ## Requirements
 
-- Linux with Quickshell and QtQuick Controls
-- An Omarchy desktop is recommended, but the app only requires a working Quickshell installation
+- Linux with Qt 6.2 or newer, Qt Quick, Qt Quick Controls and Qt Quick Dialogs
+- CMake 3.21 or newer (qmake6 is also supported)
+- An Omarchy desktop is optional; its active theme is used when available, otherwise OmaPaint uses default colors
 
 ## Packages
 
-Packaging files for version `0.5.1` are included in `packaging/`:
+Packaging definitions are included in `packaging/` and `debian/`:
 
 - Debian/Ubuntu: build from the repository root with `dpkg-buildpackage -us -uc`
 - Arch/Omarchy: build with `makepkg -si packaging/arch/PKGBUILD`
 
-Both packages require Quickshell to be installed on the target system.
+The standalone Qt 6 application does not require Quickshell. Package definitions retain the current `0.5.1` metadata until the planned `0.6.0` release is prepared.
 
 ## License
 

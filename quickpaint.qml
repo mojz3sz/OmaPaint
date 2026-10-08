@@ -3,8 +3,6 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtQuick.Window
-import Quickshell
-import Quickshell.Io
 
 ApplicationWindow {
     id: root
@@ -16,13 +14,7 @@ ApplicationWindow {
     title: "OmaPaint"
     color: surface
 
-    property var themeData: ({
-        background: "#121212",
-        foreground: "#bebebe",
-        accent: "#e68e0d",
-        selection: "#2a2a2a",
-        muted: "#555555"
-    })
+    property var themeData: themeProvider.colors()
     readonly property color surface: themeData.background || "#121212"
     readonly property color surfaceRaised: Qt.lighter(surface, 1.18)
     readonly property color surfaceSoft: Qt.lighter(surface, 1.32)
@@ -117,13 +109,6 @@ ApplicationWindow {
         for (var key in themeData) next[key] = themeData[key]
         next[m[1]] = m[2]
         themeData = next
-    }
-
-    Process {
-        id: themeProcess
-        command: ["bash", "-lc", "theme=$(omarchy theme current | tr '[:upper:] ' '[:lower:]-'); f=\"$HOME/.local/state/omarchy/current/theme/colors.toml\"; [ -f \"$f\" ] || f=\"/usr/share/omarchy/themes/$theme/colors.toml\"; grep -E '^(background|foreground|accent|selection|muted)[[:space:]]*=' \"$f\""]
-        stdout: SplitParser { onRead: function(line) { root.themeLine(line) } }
-        Component.onCompleted: running = true
     }
 
     function syncCurrentLayer() {

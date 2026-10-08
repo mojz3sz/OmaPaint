@@ -4,3 +4,26 @@ __pycache__/
 output/
 tmp/
 tries/
+
+# Qt/CMake/qmake build output
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+*.o
+*.a
+*.so
+*.moc
+*.qmltypes
+.qmake.stash
+qrc_*.cpp
+moc_*.cpp
+
+# Debian package build output
+debian/.debhelper/
+debian/omapaint/
+debian/files
+debian/*.debhelper.log
+*.deb

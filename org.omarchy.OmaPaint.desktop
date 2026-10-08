@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
 Name=OmaPaint
-Comment=A simple drawing app for Omarchy
+Comment=A simple Qt 6 drawing app for Omarchy
 TryExec=omapaint
 Exec=omapaint
 Icon=applications-graphics
 Terminal=false
-Categories=Graphics;Utility;
+Categories=Graphics;
 MimeType=image/png;image/jpeg;image/webp;

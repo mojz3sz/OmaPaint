@@ -1,10 +1,12 @@
 # OmaPaint
 
-A small Quickshell/QML drawing app designed to feel at home beside Omacalc and Omawrite.
+A small Qt 6/Qt Quick drawing app designed to feel at home beside Omacalc and Omawrite.
 
 ## Run
 
 ```bash
+cmake -S . -B build
+cmake --build build
 ./run-omapaint.sh
 ```
 
@@ -26,3 +28,4 @@ You can also launch `org.omarchy.OmaPaint.desktop` from a desktop menu after cop
 - Fill/bucket tool for enclosed areas
 - Zoom with the slider or mouse wheel, centered on the pointer
 - Omarchy theme-aware colors, loaded from the active theme
+- Default colors on systems without Omarchy
